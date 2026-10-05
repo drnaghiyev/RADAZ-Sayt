@@ -1,0 +1,4 @@
+.sites-runtime/
+.env
+*.tar.gz
+*.zip
