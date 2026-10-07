@@ -12,6 +12,10 @@ const json=(v,status=200,headers={})=>Response.json(v,{status,headers:{'Cache-Co
 export default {async fetch(request,env,ctx){
  const url=new URL(request.url),path=url.pathname;
  try{
+  if(path==='/owner-identity'){
+   const identity={id:request.headers.get('oai-authenticated-user-id'),email:request.headers.get('oai-authenticated-user-email')};
+   return secure(new Response('<!doctype html><html lang="az"><meta charset="utf-8"><title>RADAZ hesabı</title><h1>RADAZ hesabı</h1><pre>'+JSON.stringify(identity,null,2).replaceAll('&','&amp;').replaceAll('<','&lt;')+'</pre><a href="/#/login">Giriş səhifəsi</a></html>',{headers:{'Content-Type':'text/html;charset=utf-8','Cache-Control':'no-store'}}),url);
+  }
   if(!path.startsWith('/api/'))return secure(await env.ASSETS.fetch(request),url);
   return secure(await api(request,env,url),url);
  }catch(e){if(!e.status)console.error('RADAZ API failure',e.name,e.message);return secure(json({detail:e.status?e.message:'Server əməliyyatı tamamlanmadı. Yenidən sınayın.'},e.status||500),url);}
