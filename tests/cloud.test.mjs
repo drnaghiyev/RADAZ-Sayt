@@ -14,9 +14,11 @@ before(async()=>{
  db=await mf.getD1Database('DB');for(const f of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort())for(const statement of (await readFile('drizzle/'+f,'utf8')).split('--> statement-breakpoint').filter(Boolean))await db.prepare(statement).run();
 });after(async()=>mf?.dispose());
 test('cloud accounts persist, require identity, and isolate owner settings',async()=>{
- let r=await call('/auth/register',{method:'POST',body:{name:'Patient',email:'patient@radaz.test',password:pass,role:'patient'}});assert.equal(r.status,201);patientCookie=r.cookie;
- r=await call('/auth/login',{method:'POST',body:{email:'patient@radaz.test',password:pass}});assert.equal(r.status,200);assert.equal((await call('/auth/me',{cookie:r.cookie})).data.user.name,'Patient');
- r=await call('/auth/register',{method:'POST',body:{name:'Doctor',email:'doctor@radaz.test',password:pass,role:'doctor'}});assert.equal(r.status,201);doctorCookie=r.cookie;doctorId=r.data.user.id;
+ for(const role of ['patient','clinic','admin'])assert.equal((await call('/auth/register',{method:'POST',body:{name:'Blocked role',email:role+'@radaz.test',password:pass,role}})).status,400);
+ let r=await call('/auth/guest',{method:'POST',body:{}});assert.equal(r.status,201);patientCookie=r.cookie;assert.equal((await call('/auth/me',{cookie:patientCookie})).data.user,null);
+ r=await call('/auth/register',{method:'POST',body:{name:'Doctor',email:' Doctor@radaz.test ',password:pass,role:'doctor'}});assert.equal(r.status,201);doctorCookie=r.cookie;doctorId=r.data.user.id;
+ await call('/auth/logout',{method:'POST',cookie:doctorCookie,body:{}});assert.equal((await call('/auth/me',{cookie:doctorCookie})).data.user,null);
+ r=await call('/auth/login',{method:'POST',body:{email:'DOCTOR@radaz.test',password:pass}});assert.equal(r.status,200);doctorCookie=r.cookie;assert.equal((await call('/auth/me',{cookie:doctorCookie})).data.user.id,doctorId);
  assert.equal((await call('/admin/payment-settings',{cookie:doctorCookie})).status,403);
  assert.equal((await call('/auth/owner',{method:'POST',body:{}})).status,403);
  r=await call('/auth/owner',{method:'POST',body:{},headers:{'oai-authenticated-user-id':'verified-owner','oai-authenticated-user-email':'owner@radaz.test'}});assert.equal(r.status,200);ownerCookie=r.cookie;
@@ -28,7 +30,7 @@ test('cloud accounts persist, require identity, and isolate owner settings',asyn
  assert.equal((await call('/admin/site-settings',{method:'PUT',cookie:ownerCookie,body:{call_center:'*006',phone:''},headers:{Origin:'https://evil.test'}})).status,403);
  await call('/admin/approve',{method:'POST',cookie:ownerCookie,body:{kind:'doctor',id:doctorId}});
  await call('/me/profile',{method:'PUT',cookie:doctorCookie,body:{price:45,name:'Doctor'}});
- r=await call('/auth/register',{method:'POST',body:{name:'Other patient',email:'other@radaz.test',password:pass,role:'patient'}});otherCookie=r.cookie;
+ r=await call('/auth/guest',{method:'POST',body:{}});otherCookie=r.cookie;
 });
 test('streamed R2 upload, capacity and private case access',async()=>{
  const slot=await call('/me/availability',{method:'POST',cookie:doctorCookie,body:{date:'2026-11-01',time:'09:00–11:00',capacity:1}});assert.equal(slot.status,201);
@@ -37,7 +39,9 @@ test('streamed R2 upload, capacity and private case access',async()=>{
  r=await call('/uploads/'+upload+'/parts/1',{method:'PUT',cookie:patientCookie,raw:bytes,headers:{'Content-Length':String(bytes.length)}});assert.equal(r.status,200);
  assert.equal((await call('/uploads/'+upload+'/complete',{method:'POST',cookie:patientCookie,body:{}})).status,200);
  const payload={archive_id:upload,doctor_id:doctorId,slot_id:slot.data.id,consent:true,patient:{first_name:'Test',last_name:'Case',email:'patient@radaz.test',phone:'000000',complaints:'Fixture'},metadata:{modality:'CT'}};
- r=await call('/consultations',{method:'POST',cookie:patientCookie,body:payload});assert.equal(r.status,201,JSON.stringify(r.data));caseId=r.data.case.id;receipt=r.data.token;assert.equal(r.data.case.payment_status,'demo');assert.equal(Date.parse(r.data.case.response_due_at)-Date.parse(r.data.case.created_at),7200000);
+ r=await call('/consultations',{method:'POST',cookie:patientCookie,body:payload});assert.equal(r.status,201,JSON.stringify(r.data));caseId=r.data.case.id;receipt=r.data.token;assert.equal(r.data.case.payment_status,'demo');assert.equal(r.data.case.response_due_at,null);assert.equal(r.data.case.status,'awaiting_payment');assert.equal((await call('/me/cases',{cookie:doctorCookie})).data.length,0);
+ assert.equal((await call('/cases/'+caseId+'/demo-payment',{method:'POST',cookie:otherCookie,body:{}})).status,403);
+ r=await call('/cases/'+caseId+'/demo-payment',{method:'POST',body:{},headers:{'X-Case-Token':receipt}});assert.equal(r.status,200);assert.equal(r.data.payment_status,'demo_paid');assert.equal(Date.parse(r.data.response_due_at)-Date.parse(r.data.paid_at),7200000);const due=r.data.response_due_at;assert.equal((await call('/cases/'+caseId+'/demo-payment',{method:'POST',cookie:patientCookie,body:{}})).data.response_due_at,due);
  assert.equal((await call('/consultations',{method:'POST',cookie:patientCookie,body:payload})).status,400);
  assert.equal((await call('/cases/'+caseId,{cookie:otherCookie})).status,403);
  assert.equal((await call('/me/cases',{cookie:doctorCookie})).data.length,1);
@@ -68,6 +72,34 @@ test('payment confirmation rejects changed amounts and is idempotent',async()=>{
  await settle(s,p,{order_id:p.id,transaction:p.transaction_id,status:'success',amount:'45.00',currency:'AZN'});assert.equal((await s.get('payment-case','case')).response_due_at,first.response_due_at);
 });
 
+test('doctor clinics and individual earning rules cannot cross accounts',async()=>{
+ let r=await call('/auth/register',{method:'POST',body:{name:'Second doctor',email:'second@radaz.test',password:pass,role:'doctor'}});assert.equal(r.status,201);const second=r.cookie,uid=r.data.user.id;
+ assert.equal((await call('/clinics',{method:'POST',cookie:patientCookie,body:{name:'Forbidden'}})).status,403);
+ r=await call('/clinics',{method:'POST',cookie:doctorCookie,body:{name:'Doctor clinic',address:'Baku',phone:'123456',owner_id:uid}});assert.equal(r.status,201);const clinic=r.data.id;assert.equal(r.data.owner_id,doctorId);
+ assert.equal((await call('/me/clinics',{cookie:second})).data.length,0);
+ for(const method of ['PUT','DELETE'])assert.equal((await call('/me/clinics/'+clinic,{method,cookie:second,body:{name:'Other'}})).status,404);
+ r=await call('/clinics',{method:'POST',cookie:second,body:{name:'Second clinic'}});assert.equal(r.status,201,'unapproved doctor can complete own profile');
+ assert.equal((await call('/me/clinics/'+clinic,{method:'PUT',cookie:doctorCookie,body:{name:'Renamed clinic',address:'Baku'}})).status,200);
+ assert.equal((await call('/doctors')).data.find(d=>d.id===doctorId).clinics[0].name,'Renamed clinic');
+ await call('/me/clinics/'+clinic,{method:'DELETE',cookie:doctorCookie,body:{}});assert.equal((await call('/me/clinics',{cookie:doctorCookie})).data.length,0);assert.equal((await call('/me/clinics',{cookie:second})).data.length,1);
+ for(const [doctor_id,mode,value] of [[doctorId,'percentage','65'],[uid,'fixed','20']])assert.equal((await call('/admin/earning-rules',{method:'PUT',cookie:ownerCookie,body:{doctor_id,mode,value}})).status,200);
+ const rules=(await call('/admin/earning-rules',{cookie:ownerCookie})).data;assert.equal(rules.default,null);assert.equal(rules.overrides.find(r=>r.doctor_id===doctorId).value,65);assert.equal(rules.overrides.find(r=>r.doctor_id===uid).value,20);
+ assert.equal((await call('/x/cases/'+caseId,{cookie:patientCookie})).data.versions.length,0,'guest cannot read report drafts');
+ assert.equal((await call('/cases/'+caseId+'/archive',{headers:{'X-Case-Token':receipt}})).status,401,'receipt grants do not expose image archives');
+});
+
+test('owner can securely create a password and sign in again without platform login',async()=>{
+ assert.equal((await call('/me/password')).status,401);
+ assert.equal((await call('/me/password',{cookie:ownerCookie})).data.has_password,false);
+ assert.equal((await call('/auth/login',{method:'POST',body:{email:'owner@radaz.test',password:pass}})).status,409);
+ assert.equal((await call('/me/password',{method:'PUT',cookie:ownerCookie,body:{password:pass,confirm_password:'different'}})).status,400);
+ let r=await call('/me/password',{method:'PUT',cookie:ownerCookie,body:{password:pass,confirm_password:pass}});assert.equal(r.status,200);const old=ownerCookie;ownerCookie=r.cookie;
+ assert.equal((await call('/auth/me',{cookie:old})).data.user,null);
+ assert.equal((await call('/me/password',{cookie:ownerCookie})).data.has_password,true);
+ assert.equal((await call('/me/password',{method:'PUT',cookie:ownerCookie,body:{password:pass,confirm_password:pass,current_password:'wrong'}})).status,403);
+ r=await call('/auth/login',{method:'POST',body:{email:'OWNER@RADAZ.TEST',password:pass}});assert.equal(r.status,200);ownerCookie=r.cookie;assert.equal((await call('/admin/overview',{cookie:ownerCookie})).status,200);
+});
+
 test('earning rules enforce cents, percentage bounds and Baku date boundaries',()=>{
  assert.equal(calculate(4501,parseRule({mode:'percentage',value:'33.33'})),1500);
  assert.equal(calculate(4501,parseRule({mode:'fixed',value:'17.25'})),1725);
@@ -80,7 +112,8 @@ test('doctor earnings accrue once, preserve snapshots, exclude demo and isolate 
  const s=dbTools(db),path='/admin/earning-rules';
  assert.equal((await call(path,{cookie:patientCookie})).status,403);
  assert.equal((await call(path,{method:'PUT',cookie:doctorCookie,body:{mode:'fixed',value:'100'}})).status,403);
- let r=await call(path,{method:'PUT',cookie:ownerCookie,body:{mode:'percentage',value:'60'}});assert.equal(r.status,200);
+ assert.equal((await call(path,{method:'PUT',cookie:ownerCookie,body:{mode:'fixed',value:'10'}})).status,400);
+ let r=await call(path,{method:'PUT',cookie:ownerCookie,body:{doctor_id:doctorId,mode:'percentage',value:'60'}});assert.equal(r.status,200);
  async function paidCase(cid,amount){await s.put('case',doctorId,{id:cid,doctor_id:doctorId,user_id:'fixture-patient',price:999,status:'pending',payment_status:'paid',created_at:new Date().toISOString(),version:0});await s.run('INSERT INTO payments VALUES(?,?,?,?,?,?,?)','pay-'+cid,cid,amount,'AZN','paid','trx-'+cid,new Date().toISOString());return call('/cases/'+cid+'/report',{method:'PUT',cookie:doctorCookie,body:{html:'<p>Approved fixture</p>',version:0,approve:true}});}
  r=await paidCase('earned-percentage',4501);assert.equal(r.status,200);assert.equal((await s.first('SELECT * FROM earnings WHERE case_id=?','earned-percentage')).amount,2701);
  assert.equal((await s.first('SELECT COUNT(*) AS n FROM earnings WHERE case_id=?',caseId)).n,0,'demo report must not accrue');
@@ -102,7 +135,7 @@ test('doctor earnings accrue once, preserve snapshots, exclude demo and isolate 
  await s.run('DELETE FROM earning_rules');
  assert.equal((await paidCase('earned-unallocated',5000)).status,200,'clinical approval works before financial configuration');
  assert.equal((await s.first("SELECT amount FROM earnings WHERE case_id='earned-unallocated'")).amount,null);
- await call(path,{method:'PUT',cookie:ownerCookie,body:{mode:'percentage',value:'40'}});
+ await call(path,{method:'PUT',cookie:ownerCookie,body:{doctor_id:doctorId,mode:'percentage',value:'40'}});
  r=await call('/admin/earnings/allocate',{method:'POST',cookie:ownerCookie,body:{doctor_id:doctorId}});assert.equal(r.data.count,1);
  assert.equal((await s.first("SELECT amount FROM earnings WHERE case_id='earned-unallocated'")).amount,2000);
  assert.equal((await s.first("SELECT amount FROM earnings WHERE case_id='earned-fixed'")).amount,1725);

@@ -13,7 +13,7 @@ export async function checkout(s,env,c,origin){
  let p=await s.first("SELECT * FROM payments WHERE case_id=? AND state='pending' ORDER BY created_at DESC LIMIT 1",c.id);
  if(p?.transaction_id)throw fail(409,'Bu müraciətin ödənişi artıq başlayıb. Kabinetdən ödəniş statusunu yoxlayın.');
  if(!p){p={id:id('pay'),case_id:c.id,amount,currency:'AZN'};await s.run('INSERT INTO payments(id,case_id,amount,currency,state,created_at) VALUES(?,?,?,?,?,?)',p.id,c.id,amount,'AZN','pending',now());}
- const returnUrl=origin+'/?payment='+encodeURIComponent(p.id)+'#/dashboard';
+ const returnUrl=origin+'/?payment='+encodeURIComponent(p.id)+'#/payment/'+encodeURIComponent(c.id);
  const result=await provider(v,'request',{amount:(p.amount/100).toFixed(2),currency:'AZN',language:'az',order_id:p.id,description:'RADAZ radioloji rəy',success_redirect_url:returnUrl,error_redirect_url:returnUrl,result_url:origin+'/api/payments/callback'});
  let url;try{url=new URL(result.redirect_url);}catch{throw fail(502,'Provayder etibarlı ödəniş keçidi qaytarmadı.');}
  if(url.protocol!=='https:'||!result.transaction)throw fail(502,'Ödəniş cavabı tamamlanmayıb.');

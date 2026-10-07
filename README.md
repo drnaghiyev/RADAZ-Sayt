@@ -4,9 +4,9 @@ Azerbaijani, Russian and English radiology portal with persistent accounts, priv
 
 ## Deployed architecture
 
-The Sites publication now runs `cloud/worker.mjs` with **D1** for accounts, profiles, reports and settings and **R2** for files. It is not a static browser demo. Public registration creates patient, doctor or clinic accounts; doctors require owner approval. Patients see their own requests and approved reports. Only assigned approved radiologists and the owner can edit reports.
+The Sites publication now runs `cloud/worker.mjs` with **D1** for accounts, profiles, reports and settings and **R2** for files. It is not a static browser demo. Public registration creates only doctor accounts; doctors require owner approval before accepting cases. Patients submit consultations without account registration using a private guest session and receipt key. Each doctor manages their own clinics from the profile. Only assigned approved radiologists and the owner can edit reports.
 
-The site owner uses **Administrator girişi** on the sign-in page. The Worker checks the trusted Sites authenticated user ID against `OWNER_PLATFORM_ID`, then issues an HttpOnly session. `TRUST_SITES_IDENTITY=true` is valid only behind the Sites dispatcher, which controls identity headers. Do not enable it on an internet-facing server that accepts caller-supplied identity headers. No default owner password is committed.
+The site owner uses **Administrator girişi** on the sign-in page. The Worker checks the trusted Sites authenticated user ID against `OWNER_PLATFORM_ID`, then issues an HttpOnly session. `TRUST_SITES_IDENTITY=true` is valid only behind the Sites dispatcher, which controls identity headers. Do not enable it on an internet-facing server that accepts caller-supplied identity headers. The owner can create an email-login password in `#/account` after platform sign-in; subsequent logins use email/password without ChatGPT. Password changes require the current password and revoke previous sessions. No default owner password is committed.
 
 Required production environment variables (managed in Sites, never in Git):
 
@@ -45,9 +45,9 @@ The earlier Express/SQLite backend remains under `server/` with `npm run setup` 
 
 Payments default to **demo**: no card details or charges. The provider has not been selected. A server-side Epoint adapter is included as an optional integration; Epoint public key in Merchant ID, private key in Secret key, AZN and Live enable hosted checkout. Bank details alone do not activate a payment gateway. Other providers require their own adapter. Real merchant checkout still needs verification with the selected provider before accepting real payments.
 
-The Epoint adapter signs requests, verifies callback signatures and stored order/amount/transaction, and supports status reconciliation from the patient cabinet. A browser success redirect never marks an order paid. An owner-private Sites audience may block external callbacks; authenticated status reconciliation remains available. Keep the current audience unless the owner changes it deliberately.
+The Epoint adapter signs requests, verifies callback signatures and stored order/amount/transaction, and supports status reconciliation from the payment/receipt page. A browser success redirect never marks an order paid. The owner authorized public Site access. The homepage and doctor registration do not require ChatGPT; admin, case, image and financial APIs still enforce their own authorization.
 
-**Əlaqə ayarları** (`#/admin/contact`) controls the displayed call center (initially `*006`) and optional phone number. No additional phone number has been invented. The site displays a two-hour response message and stores a response deadline on submitted demo cases or confirmed live payments.
+**Əlaqə ayarları** (`#/admin/contact`) controls the displayed call center (initially `*006`) and optional phone number. No additional phone number has been invented. The two-hour response message is shown to the submitting patient only after explicit test-payment completion or confirmed live payment. Unpaid cases do not enter the doctor queue.
 
 ## Reports and templates
 
@@ -87,6 +87,6 @@ Payment protocol reference: [Epoint developer documentation](https://developer.e
 
 ## Admin və həkim qazancı
 
-`#/admin/overview`: sahibə məxsus admin paneli, qeydiyyat və rapor sayları, həkim təsdiqi. `#/admin/earnings-settings`: ümumi və həkimə özəl faiz (0–100%) və ya sabit AZN/rapor. `#/admin/earnings`: tarix aralığı, həkim filtri, ay seçimi, xülasə və CSV; həkim yalnız `#/earnings` vasitəsilə öz qazancını görür.
+`#/admin/overview`: sahibə məxsus admin paneli, qeydiyyat və rapor sayları, həkim təsdiqi. `#/admin/earnings-settings`: hər həkim üçün ayrı faiz (0–100%) və ya sabit AZN/rapor. `#/admin/earnings`: tarix aralığı, həkim filtri, ay seçimi, xülasə və CSV; həkim yalnız `#/earnings` vasitəsilə öz qazancını görür.
 
 Hesablama yalnız serverdə təsdiqlənmiş AZN ödənişi və təsdiqlənmiş rapor üçün aparılır. Qazanc tarixi raporun təsdiqidir; gün sərhədləri Asia/Baku, hər iki tarix daxil. Qəpik və faiz üçün tam ədədlər istifadə edilir, nəticə ən yaxın qəpiyə yuvarlaqlaşdırılır. Qayda, ödəniş və qazanc hər rapor üçün saxlanılır, sonrakı qayda dəyişiklikləri tarixçəni dəyişmir. Qaydasız təsdiqlənən raporlar hesablanmamış kimi görünür; admin bunları ayrıca cari qayda ilə hesablayır. Demo və geri qaytarılmış ödənişlər cəmə daxil edilmir. Bu panel qazanc hesablayır, bank köçürməsi etmir.

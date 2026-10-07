@@ -13,7 +13,7 @@ export function parseRule(d){
  return {mode:d.mode,value};
 }
 export const calculate=(gross,rule)=>rule.mode==='fixed'?rule.value:Math.round(gross*rule.value/10000);
-const effective=(s,uid)=>s.first("SELECT * FROM earning_rules WHERE doctor_id IN (?, '*') ORDER BY CASE WHEN doctor_id=? THEN 0 ELSE 1 END LIMIT 1",uid,uid);
+const effective=(s,uid)=>s.first('SELECT * FROM earning_rules WHERE doctor_id=?',uid);
 
 // Included in the report approval transaction. A unique case ID prevents double accrual.
 export async function earningStatement(s,c){
@@ -27,7 +27,7 @@ export async function earningStatement(s,c){
 }
 const people=s=>s.all("SELECT id,email,approved,json_extract(profile,'$.name') AS name FROM users WHERE role='doctor' OR (role='admin' AND CAST(json_extract(profile,'$.price') AS REAL)>0) ORDER BY name");
 const ruleView=r=>r?{...r,value:r.value/100}:null;
-export async function rules(s){return {default:ruleView(await s.first("SELECT * FROM earning_rules WHERE doctor_id='*'")),doctors:await people(s),overrides:(await s.all("SELECT * FROM earning_rules WHERE doctor_id!='*'")).map(ruleView)};}
+export async function rules(s){return {default:null,doctors:await people(s),overrides:(await s.all("SELECT * FROM earning_rules WHERE doctor_id!='*'")).map(ruleView)};}
 export async function report(s,url,doctorId){
  const today=new Date(Date.now()+4*3600000).toISOString().slice(0,10),range=dateRange(url.searchParams.get('from')||today.slice(0,7)+'-01',url.searchParams.get('to')||today);
  const selected=doctorId||url.searchParams.get('doctor')||'',args=[range.start,range.end,...(selected?[selected]:[])];
@@ -50,9 +50,9 @@ export async function finances({s,p,method,url,user,auth,owner,body}){
  if(p==='/admin/earnings')return report(s,url);
  if(p==='/admin/earning-rules'){
   if(method==='GET')return rules(s);
-  const d=await body(),uid=String(d.doctor_id||'*');
+  const d=await body(),uid=String(d.doctor_id||'');if(!uid||uid==='*')throw fail(400,'Qazanc qaydası üçün konkret həkim seçin.');
   if(uid!=='*'&&!await s.first("SELECT id FROM users WHERE id=? AND role IN ('doctor','admin')",uid))throw fail(404,'Həkim tapılmadı.');
-  if(method==='DELETE'){if(uid==='*')throw fail(400,'Ümumi qayda silinə bilməz.');await s.run('DELETE FROM earning_rules WHERE doctor_id=?',uid);await s.audit(user.id,'earning-rule-inherit',uid);return rules(s);}
+  if(method==='DELETE'){if(uid==='*')throw fail(400,'Ümumi qayda silinə bilməz.');await s.run('DELETE FROM earning_rules WHERE doctor_id=?',uid);await s.audit(user.id,'earning-rule-removed',uid);return rules(s);}
   if(method!=='PUT')throw fail(405,'Əməliyyat dəstəklənmir.');
   const rule=parseRule(d),at=now();
   await s.db.batch([s.db.prepare('INSERT INTO earning_rules VALUES(?,?,?,?,?) ON CONFLICT(doctor_id) DO UPDATE SET mode=excluded.mode,value=excluded.value,updated_at=excluded.updated_at,updated_by=excluded.updated_by').bind(uid,rule.mode,rule.value,at,user.id),s.db.prepare('INSERT INTO audit(actor,action,target,at) VALUES(?,?,?,?)').bind(user.id,'earning-rule-update',JSON.stringify({doctor_id:uid,...rule}),at)]);

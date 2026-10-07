@@ -15,6 +15,13 @@
       "when": 1791366933532,
       "tag": "0001_talented_jasper_sitwell",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791401673338,
+      "tag": "0002_individual_doctor_rules",
+      "breakpoints": true
     }
   ]
 }

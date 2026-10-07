@@ -10,8 +10,9 @@ new vm.Script(readFileSync(new URL('./dist/site.js',import.meta.url),'utf8'),{fi
 new vm.Script(readFileSync(new URL('./dist/platform.js',import.meta.url),'utf8'),{filename:'platform.js'});
 new vm.Script(readFileSync(new URL('./dist/real.js',import.meta.url),'utf8'),{filename:'real.js'});
 new vm.Script(readFileSync(new URL('./dist/admin.js',import.meta.url),'utf8'),{filename:'admin.js'});
-for(const asset of ['site.js','site.css','platform.js','platform.css','real.js','admin.js','assets/radaz-viewer-ct.jpg','assets/radaz-report-ct.jpg']){
+new vm.Script(readFileSync(new URL('./dist/portal.js',import.meta.url),'utf8'),{filename:'portal.js'});
+for(const asset of ['site.js','site.css','platform.js','platform.css','real.js','admin.js','portal.js','assets/radaz-viewer-ct.jpg','assets/radaz-report-ct.jpg']){
   if(!existsSync(new URL('./dist/'+asset,import.meta.url)))throw Error('Missing asset: '+asset);
 }
 if(!html.includes('window.RADAZ_STANDALONE=false;window.RADAZ_PRODUCTION=true;'))throw Error('Production must never fall back to ephemeral demo accounts.');
-console.log(JSON.stringify({inlineScripts:checked,customScripts:'valid',assets:8,mode:'production; API required'}));
+console.log(JSON.stringify({inlineScripts:checked,customScripts:'valid',assets:9,mode:'production; API required'}));
