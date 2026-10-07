@@ -216,7 +216,26 @@ window.RADAZ_MESSAGES = {"az":{"RADAZ ana səhifə":"RADAZ ana səhifə","RADIOL
     const format = { timeZone: 'Asia/Baku', day: 'numeric', month: opts.month || 'long' };
     if (opts.year) format.year = 'numeric';
     if (opts.weekday) format.weekday = opts.weekday;
-    let text = new Intl.DateTimeFormat(R.locale, format).format(d);
+    let text;
+    // Some embedded browsers ship incomplete Azerbaijani ICU data ("M10 7").
+    // Keep calendar values in Baku time and supply the Azerbaijani names locally.
+    if (R.lang === 'az') {
+      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Baku', day: 'numeric', month: 'numeric', year: 'numeric', weekday: 'short'
+      }).formatToParts(d).map(part => [part.type, part.value]));
+      const months = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avqust', 'sentyabr', 'oktyabr', 'noyabr', 'dekabr'];
+      const shortMonths = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avq', 'sen', 'okt', 'noy', 'dek'];
+      const weekdays = { Mon: ['bazar ertəsi', 'B.e.', '1'], Tue: ['çərşənbə axşamı', 'Ç.a.', '2'], Wed: ['çərşənbə', 'Ç.', '3'], Thu: ['cümə axşamı', 'C.a.', '4'], Fri: ['cümə', 'C.', '5'], Sat: ['şənbə', 'Ş.', '6'], Sun: ['bazar', 'B.', '7'] };
+      const month = Number(parts.month), day = Number(parts.day);
+      if (['numeric', '2-digit'].includes(format.month)) {
+        text = (format.month === '2-digit' ? String(day).padStart(2, '0') : day) + '.' + (format.month === '2-digit' ? String(month).padStart(2, '0') : month);
+        if (opts.year) text += '.' + parts.year;
+      } else {
+        const name = format.month === 'short' ? shortMonths[month - 1] : format.month === 'narrow' ? months[month - 1][0] : months[month - 1];
+        text = day + ' ' + name + (opts.year ? ' ' + parts.year : '');
+      }
+      if (opts.weekday) text = weekdays[parts.weekday][opts.weekday === 'short' ? 1 : opts.weekday === 'narrow' ? 2 : 0] + ', ' + text;
+    } else text = new Intl.DateTimeFormat(R.locale, format).format(d);
     if (opts.hour) text += ' · ' + new Intl.DateTimeFormat(R.locale, { timeZone: 'Asia/Baku', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
     return text;
   };
