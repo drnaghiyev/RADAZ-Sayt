@@ -18,3 +18,7 @@ dist/client/
 dist/.openai/
 .dev.vars
 .qa/
+.venv/
+__pycache__/
+integrations/clinic/radaz-clinic.json
+integrations/clinic/spool/

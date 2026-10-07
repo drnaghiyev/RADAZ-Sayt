@@ -16,7 +16,15 @@ Required production environment variables (managed in Sites, never in Git):
 - `OWNER_EMAIL`: reserves the owner email against public registration.
 - `TRUST_SITES_IDENTITY=true`: only for Sites dispatch.
 
-## Local development and checks
+## Localhost — Windows
+
+Double-click `RADAZ-Local.cmd`, or run `npm ci` once and then `npm start` with Node.js 24+. Open **http://127.0.0.1:5195**. First create your local administrator with your own email and password; there is no default password. Later use email/password sign-in. Registration creates doctor accounts only.
+
+Localhost runs the **same Worker API and frontend** as the published site, through Miniflare, with persistent D1/R2 storage in ignored `data/local/`. Keep this whole folder, including `encryption.key`, when backing up or moving the installation. Stop the server before copying a backup. Closing the server stops the website, but does not erase accounts or files. The online site has a separate database; its accounts do not automatically appear on localhost. `RADAZ_PORT` and `RADAZ_LOCAL_DATA` override the port and storage directory. It listens on loopback only.
+
+Python `venv` is used for the clinic DICOM receiver below. The website uses Node.js; activating a Python environment does not start the website.
+
+## Developer checks
 
 Node.js 24+:
 
@@ -37,7 +45,7 @@ npm test
 
 Tests use the Workers runtime with D1/R2 and separately check the retained Node backend. They cover account persistence, authorization, CSRF, encrypted/write-only settings, streamed uploads, template ownership, report locking/conflicts, single-use Viewer grants and payment confirmation signatures/amounts/idempotency.
 
-The earlier Express/SQLite backend remains under `server/` with `npm run setup` / `npm start` for the prior portable installation. It is not the backend of the current Sites publication and does not yet include all cloud portal features. For a future shared host, port the cloud API or retain Workers behind a host/router and mount the RADAZ Viewer separately. GitHub Pages cannot run these APIs.
+The earlier Express/SQLite backend remains under `server/` with explicitly named `npm run setup:legacy` / `npm run start:legacy`. Use `npm start` for the current local version. GitHub Pages cannot run the server APIs.
 
 ## Owner settings and payments
 
@@ -90,3 +98,27 @@ Payment protocol reference: [Epoint developer documentation](https://developer.e
 `#/admin/overview`: sahibə məxsus admin paneli, qeydiyyat və rapor sayları, həkim təsdiqi. `#/admin/earnings-settings`: hər həkim üçün ayrı faiz (0–100%) və ya sabit AZN/rapor. `#/admin/earnings`: tarix aralığı, həkim filtri, ay seçimi, xülasə və CSV; həkim yalnız `#/earnings` vasitəsilə öz qazancını görür.
 
 Hesablama yalnız serverdə təsdiqlənmiş AZN ödənişi və təsdiqlənmiş rapor üçün aparılır. Qazanc tarixi raporun təsdiqidir; gün sərhədləri Asia/Baku, hər iki tarix daxil. Qəpik və faiz üçün tam ədədlər istifadə edilir, nəticə ən yaxın qəpiyə yuvarlaqlaşdırılır. Qayda, ödəniş və qazanc hər rapor üçün saxlanılır, sonrakı qayda dəyişiklikləri tarixçəni dəyişmir. Qaydasız təsdiqlənən raporlar hesablanmamış kimi görünür; admin bunları ayrıca cari qayda ilə hesablayır. Demo və geri qaytarılmış ödənişlər cəmə daxil edilmir. Bu panel qazanc hesablayır, bank köçürməsi etmir.
+
+
+## Individual consultation prices
+
+In **Qazanc ayarları**, select a doctor, then set their consultation price and either percentage or fixed AZN share. The calculation preview shows doctor and platform shares. A doctor cannot override an admin-managed price. New prices affect new consultations; historical case prices and accrued earnings are preserved. The doctor dashboard shows their monthly earnings, completed paid report count and consultation price. The date-filtered report remains private to that doctor.
+
+## Clinic local server and devices
+
+Doctors add their own clinics in their profile. **Klinika bağlantıları** in the admin panel, or the connection button beside the doctor's clinic, configures destination AE Title, local server IP/name, listening IP, TCP port, allowed calling AE Titles and optional device IP restrictions. Clinic keys only authorize that clinic's incoming studies; they cannot access admin or other clinics. Disable intake or revoke its key to stop the connection. Creating another connection file rotates the key.
+
+On the clinic's Windows server with Python 3.10+:
+
+1. Run `integrations/clinic/setup.ps1`. It creates `.venv` and installs pinned `pynetdicom`/`pydicom` dependencies.
+2. Save connection settings and download **Bağlantı faylı yarat**. Place the secret `radaz-clinic.json` in `integrations/clinic/`.
+3. From that folder run `.venv/Scripts/python.exe bridge.py --config radaz-clinic.json --check`, then the same command without `--check` to receive studies.
+4. On the CT/MR/PACS device, configure the clinic server's LAN IP, destination AE Title and TCP port. Listening IP must be the server's LAN address or `0.0.0.0` for LAN devices. Permit the selected TCP port only from those devices in the clinic firewall. The website HTTPS address is not a DICOM port.
+
+The C-STORE receiver checks calling AE/IP, queues original DICOM bytes to disk before acknowledging, waits 120 seconds of study inactivity, then sends a ZIP to the site's scoped HTTPS endpoint. Its local queue survives restart and retries after network errors. Duplicates do not create duplicate cases. Additional images update a pending untouched study; once report editing starts, a changed study is rejected for manual reconciliation and local files remain. Incoming studies are assigned to the clinic's doctor and marked `clinic_unbilled`; they do not invent a patient payment or earnings. The receiver accepts up to 64 MiB compressed per study. Larger studies remain local and can use the site's 256 MiB upload. A C-STORE success means queued locally; **Son qəbul** confirms receipt by the site. Local copies are retained until the clinic applies its retention policy.
+
+Protocol check: `integrations/clinic/.venv/Scripts/python.exe tests/bridge_test.py`. It sends a synthetic DICOM through C-STORE, verifies durable storage and the outgoing ZIP, and checks restart deduplication. No real medical device is connected by this test.
+
+## Professional template editor
+
+`#/templates` has a searchable KT/MRT/Rentgen/USM library and a Tiptap editor with fonts, size, color, headings, alignment, lists, tables and cell operations, undo/redo, preview, duplicate and Ctrl+S. Rich content is sanitized on the server and remains private to the account. Sources: [Tiptap TextStyleKit](https://tiptap.dev/docs/editor/extensions/functionality/text-style-kit), [TableKit](https://tiptap.dev/docs/editor/extensions/nodes/table), [pynetdicom Storage SCP](https://pydicom.github.io/pynetdicom/stable/examples/storage.html).

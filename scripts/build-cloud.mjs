@@ -2,6 +2,7 @@ import {build} from 'esbuild';
 import {mkdir,readdir,cp,readFile,writeFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 const root=new URL('../',import.meta.url),dist=new URL('dist/',root);
+await build({entryPoints:[fileURLToPath(new URL('ui/editor.mjs',root))],outfile:fileURLToPath(new URL('editor.bundle.js',dist)),bundle:true,format:'iife',platform:'browser',target:'es2022',minify:true,logLevel:'info'});
 await mkdir(new URL('client/',dist),{recursive:true});await mkdir(new URL('server/',dist),{recursive:true});
 for(const entry of await readdir(dist,{withFileTypes:true})){
  if(['client','server','.openai'].includes(entry.name))continue;

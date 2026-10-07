@@ -10,7 +10,7 @@ let mf,db,ownerCookie,patientCookie,doctorCookie,doctorId,caseId,receipt,otherCo
 const base='https://radaz.test',pass='Test-only-long-password!';
 async function call(path,{method='GET',cookie,body,headers={},raw}={}){const res=await mf.dispatchFetch(base+'/api'+path,{method,headers:{Origin:base,'X-RADAZ-CLIENT':'web',...(cookie?{Cookie:cookie}:{}),...(body?{'Content-Type':'application/json'}:{}),...headers},body:raw??(body?JSON.stringify(body):undefined)});const data=await res.json();return {status:res.status,data,cookie:res.headers.get('Set-Cookie')?.split(';')[0]};}
 before(async()=>{
- mf=new Miniflare({modules:true,scriptPath:'dist/server/index.js',compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],bindings:{TRUST_SITES_IDENTITY:'true',PUBLIC_ORIGIN:base,OWNER_PLATFORM_ID:'verified-owner',OWNER_EMAIL:'owner@radaz.test',SETTINGS_ENCRYPTION_KEY:randomBytes(32).toString('base64')}});
+ mf=new Miniflare({workers:[{name:'radaz',modules:true,scriptPath:'dist/server/index.js',compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],d1Databases:['DB'],r2Buckets:['BUCKET'],bindings:{TRUST_SITES_IDENTITY:'true',PUBLIC_ORIGIN:base,OWNER_PLATFORM_ID:'verified-owner',OWNER_EMAIL:'owner@radaz.test',SETTINGS_ENCRYPTION_KEY:randomBytes(32).toString('base64')}}]});
  db=await mf.getD1Database('DB');for(const f of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort())for(const statement of (await readFile('drizzle/'+f,'utf8')).split('--> statement-breakpoint').filter(Boolean))await db.prepare(statement).run();
 });after(async()=>mf?.dispose());
 test('cloud accounts persist, require identity, and isolate owner settings',async()=>{
@@ -141,5 +141,38 @@ test('doctor earnings accrue once, preserve snapshots, exclude demo and isolate 
  assert.equal((await s.first("SELECT amount FROM earnings WHERE case_id='earned-fixed'")).amount,1725);
  assert.equal((await call('/admin/earnings/allocate',{method:'POST',cookie:ownerCookie,body:{doctor_id:doctorId}})).data.count,0);
  assert.equal((await call('/admin/overview',{cookie:ownerCookie})).status,200);
+});
+
+test('admin consultation price is authoritative and preserves existing case prices',async()=>{
+ let r=await call('/admin/earning-rules',{method:'PUT',cookie:ownerCookie,body:{doctor_id:doctorId,consultation_price:'80.50',mode:'percentage',value:'70'}});assert.equal(r.status,200);
+ assert.equal(r.data.doctors.find(d=>d.id===doctorId).consultation_price,80.5);
+ assert.equal((await call('/me/profile',{method:'PUT',cookie:doctorCookie,body:{price:1}})).status,403);
+ assert.equal((await call('/me/profile',{method:'PUT',cookie:doctorCookie,body:{price:80.5,name:'Doctor renamed'}})).status,200);
+ assert.equal((await call('/cases/'+caseId,{cookie:doctorCookie})).data.price,45);
+ assert.equal((await call('/me/earnings',{cookie:doctorCookie})).data.consultation_price,80.5);
+ assert.equal((await call('/admin/earning-rules',{method:'PUT',cookie:ownerCookie,body:{doctor_id:doctorId,consultation_price:50,mode:'fixed',value:51}})).status,400);
+ assert.equal((await call('/auth/local-setup',{method:'POST',body:{}})).status,404,'local bootstrap never exists on hosted site');
+});
+
+test('clinic intake keys are scoped, revocable and preserve incoming study revisions',async()=>{
+ const c=(await call('/clinics',{method:'POST',cookie:doctorCookie,body:{name:'DICOM clinic'}})).data;
+ const path='/me/clinics/'+c.id+'/connection';
+ assert.equal((await call(path,{cookie:otherCookie})).status,403);
+ let r=await call(path,{method:'PUT',cookie:doctorCookie,body:{enabled:true,ae_title:'RADAZ_SITE',dicom_port:11112,listen_host:'127.0.0.1',source_ae_titles:'CT_TEST',source_ips:'127.0.0.1'}});assert.equal(r.status,200);
+ r=await call(path+'/key',{method:'POST',cookie:doctorCookie,body:{}});assert.equal(r.status,200);const key=r.data.key;
+ assert.equal(JSON.stringify((await call(path,{cookie:doctorCookie})).data).includes(key),false);
+ const ingest='/clinic-ingest/'+c.id,headers={Authorization:'Bearer '+key};
+ assert.equal((await call(ingest+'/health',{headers})).status,200);
+ assert.equal((await call('/admin/clinics',{headers})).status,401,'machine key does not grant admin access');
+ const meta={study_uid:'1.2.3.4.5.6',patient_name:'Synthetic^Fixture',patient_id:'QA',modality:'CT',instances:1,manifest:'a'.repeat(64)},zip=Buffer.from('PK\x03\x04synthetic archive');
+ const send=()=>call(ingest,{method:'POST',raw:zip,headers:{...headers,'Content-Length':String(zip.length),'X-RADAZ-Study':encodeURIComponent(JSON.stringify(meta))}});
+ r=await send();assert.equal(r.status,200);const cid=r.data.id;assert.equal((await send()).data.duplicate,true);
+ assert.equal((await call('/cases/'+cid,{cookie:doctorCookie})).data.payment_status,'clinic_unbilled');
+ meta.manifest='b'.repeat(64);meta.instances=2;assert.equal((await send()).status,200);
+ assert.equal((await call('/cases/'+cid,{cookie:doctorCookie})).data.metadata.dicom_count,2);
+ await call('/cases/'+cid+'/report',{method:'PUT',cookie:doctorCookie,body:{html:'<p>Draft</p>',version:0}});
+ meta.manifest='c'.repeat(64);assert.equal((await send()).status,409,'late images cannot overwrite an active report study');
+ await call(path+'/key',{method:'POST',cookie:doctorCookie,body:{}});assert.equal((await call(ingest+'/health',{headers})).status,401,'rotated key is revoked');
+ assert.equal((await call('/admin/clinics',{cookie:ownerCookie})).data.some(x=>x.id===c.id),true);
 });
 

@@ -25,7 +25,7 @@ export async function earningStatement(s,c){
  SELECT ?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM records WHERE id=? AND kind='case' AND json_extract(value,'$.version')=? AND json_extract(value,'$.approved_at')=?)`)
  .bind(c.id,c.doctor_id,pay.id,pay.amount,amount,rule?.mode||'unconfigured',rule?.value??null,c.approved_at,rule?now():null,c.id,c.version,c.approved_at);
 }
-const people=s=>s.all("SELECT id,email,approved,json_extract(profile,'$.name') AS name FROM users WHERE role='doctor' OR (role='admin' AND CAST(json_extract(profile,'$.price') AS REAL)>0) ORDER BY name");
+const people=s=>s.all("SELECT id,email,approved,json_extract(profile,'$.name') AS name,COALESCE(json_extract(profile,'$.price'),0) AS consultation_price FROM users WHERE role IN ('doctor','admin') ORDER BY name");
 const ruleView=r=>r?{...r,value:r.value/100}:null;
 export async function rules(s){return {default:null,doctors:await people(s),overrides:(await s.all("SELECT * FROM earning_rules WHERE doctor_id!='*'")).map(ruleView)};}
 export async function report(s,url,doctorId){
@@ -36,10 +36,11 @@ export async function report(s,url,doctorId){
  WHERE e.earned_at>=? AND e.earned_at<? ${selected?'AND e.doctor_id=?':''} AND p.state='paid' AND json_extract(r.value,'$.payment_status')='paid' AND json_extract(r.value,'$.status') IN ('approved','sent') ORDER BY e.earned_at DESC,e.case_id`,...args);
  const total={count:0,gross:0,amount:0,platform:0,unallocated:0},groups=new Map();
  for(const r of rows){const g=groups.get(r.doctor_id)||{doctor_id:r.doctor_id,name:r.doctor_name,...total,count:0,gross:0,amount:0,platform:0,unallocated:0};if(!groups.has(r.doctor_id))groups.set(r.doctor_id,g);for(const t of [total,g]){t.count++;t.gross+=r.gross;if(r.amount===null)t.unallocated++;else{t.amount+=r.amount;t.platform+=r.gross-r.amount;}}}
- return {range,doctor_id:selected,total,doctors:doctorId?[]:await people(s),groups:[...groups.values()],entries:rows,rule:doctorId?ruleView(await effective(s,doctorId)):null};
+ const profile=doctorId?await s.first('SELECT profile FROM users WHERE id=?',doctorId):null;
+ return {range,doctor_id:selected,total,consultation_price:profile?JSON.parse(profile.profile).price||0:null,doctors:doctorId?[]:await people(s),groups:[...groups.values()],entries:rows,rule:doctorId?ruleView(await effective(s,doctorId)):null};
 }
 export async function finances({s,p,method,url,user,auth,owner,body}){
- if(p==='/me/earnings'){auth('doctor','admin');if(!user.approved)throw fail(403,'Hesab təsdiqi tələb olunur.');return report(s,url,user.id);}
+ if(p==='/me/earnings'){auth('doctor','admin');return report(s,url,user.id);}
  if(!['/admin/overview','/admin/earning-rules','/admin/earnings','/admin/earnings/allocate'].includes(p))return undefined;
  owner();
  if(p==='/admin/overview'){
@@ -54,8 +55,10 @@ export async function finances({s,p,method,url,user,auth,owner,body}){
   if(uid!=='*'&&!await s.first("SELECT id FROM users WHERE id=? AND role IN ('doctor','admin')",uid))throw fail(404,'Həkim tapılmadı.');
   if(method==='DELETE'){if(uid==='*')throw fail(400,'Ümumi qayda silinə bilməz.');await s.run('DELETE FROM earning_rules WHERE doctor_id=?',uid);await s.audit(user.id,'earning-rule-removed',uid);return rules(s);}
   if(method!=='PUT')throw fail(405,'Əməliyyat dəstəklənmir.');
-  const rule=parseRule(d),at=now();
-  await s.db.batch([s.db.prepare('INSERT INTO earning_rules VALUES(?,?,?,?,?) ON CONFLICT(doctor_id) DO UPDATE SET mode=excluded.mode,value=excluded.value,updated_at=excluded.updated_at,updated_by=excluded.updated_by').bind(uid,rule.mode,rule.value,at,user.id),s.db.prepare('INSERT INTO audit(actor,action,target,at) VALUES(?,?,?,?)').bind(user.id,'earning-rule-update',JSON.stringify({doctor_id:uid,...rule}),at)]);
+  const rule=parseRule(d),at=now(),price=d.consultation_price;
+  if(price!==undefined&&(!/^\d+(\.\d{1,2})?$/.test(String(price))||Number(price)<=0||Number(price)>10000))throw fail(400,'Konsultasiya qiyməti 0-dan böyük və 10 000 AZN-dən az olmalıdır.');
+  if(price!==undefined&&rule.mode==='fixed'&&rule.value>Math.round(Number(price)*100))throw fail(400,'Həkimin sabit payı konsultasiya qiymətindən böyük ola bilməz.');
+  await s.db.batch([s.db.prepare('INSERT INTO earning_rules VALUES(?,?,?,?,?) ON CONFLICT(doctor_id) DO UPDATE SET mode=excluded.mode,value=excluded.value,updated_at=excluded.updated_at,updated_by=excluded.updated_by').bind(uid,rule.mode,rule.value,at,user.id),...(price!==undefined?[s.db.prepare("UPDATE users SET profile=json_set(profile,'$.price',?,'$.price_managed',json('true')) WHERE id=?").bind(Number(price),uid)]:[]),s.db.prepare('INSERT INTO audit(actor,action,target,at) VALUES(?,?,?,?)').bind(user.id,'earning-rule-update',JSON.stringify({doctor_id:uid,...rule,consultation_price:price}),at)]);
   return rules(s);
  }
  if(p==='/admin/earnings/allocate'&&method==='POST'){
