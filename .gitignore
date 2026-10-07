@@ -2,3 +2,12 @@
 .env
 *.tar.gz
 *.zip
+node_modules/
+data/
+.env.*
+!.env.example
+coverage/
+*.log
+*.sqlite*
+*.db*
+test-results/

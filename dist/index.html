@@ -89,7 +89,7 @@ html:not([lang=az]) .summary-row strong{min-width:0}
 .x-contact-card{text-align:center}.x-contact-card>.avatar{margin:0 auto 16px}.x-contact-card>h3{margin:12px 0}.x-contact-card .x-contact-qr{width:240px;height:240px;max-width:100%;border:1px solid #e1e9e0;border-radius:8px}.x-contact-card>.button-row{justify-content:center;margin-top:24px;flex-wrap:wrap}.x-contact-card>.tiny-text{max-width:350px;margin:12px auto 0}
 .x-video-guide{max-width:940px;margin:0 auto 30px}.x-video-guide video{width:100%;max-height:520px;display:block;background:#142a26;border-radius:10px}.x-video-guide h2{margin-bottom:12px}.x-video-guide p{margin-bottom:24px}
 [data-theme=dark] .hero-lead{color:#b9cec0}[data-theme=dark] .btn-primary{background:#89d0af!important;color:#0e2d21!important}[data-theme=dark] .floating-report strong{color:#1b392b}[data-theme=dark] .floating-report div>span{color:#687b70}[data-theme=dark] .feature-card p,[data-theme=dark] .doctor-clinic,[data-theme=dark] .how-step p{color:#aabdac}
-</style><link rel="stylesheet" href="site.css"><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Crect width=%2240%22 height=%2240%22 rx=%229%22 fill=%22%23107969%22/%3E%3Ctext x=%2220%22 y=%2229%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2228%22 font-family=%22Arial%22%3ER%3C/text%3E%3C/svg%3E"></head><body><script>window.RADAZ_STANDALONE=true;</script><div id="app"><div style="padding:60px;font:20px system-ui">RADAZ açılır…</div></div><div id="modal-root"></div><div id="toast-root" role="status" aria-live="polite"></div><script>/*!
+</style><link rel="stylesheet" href="site.css"><link rel="stylesheet" href="platform.css"><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Crect width=%2240%22 height=%2240%22 rx=%229%22 fill=%22%23107969%22/%3E%3Ctext x=%2220%22 y=%2229%22 text-anchor=%22middle%22 fill=%22white%22 font-size=%2228%22 font-family=%22Arial%22%3ER%3C/text%3E%3C/svg%3E"></head><body><script>window.RADAZ_STANDALONE=true;</script><div id="app"><div style="padding:60px;font:20px system-ui">RADAZ açılır…</div></div><div id="modal-root"></div><div id="toast-root" role="status" aria-live="polite"></div><script>/*!
 
 JSZip v3.10.1 - A JavaScript class for generating and reading zip files
 <http://stuartk.com/jszip>
@@ -108,6 +108,7 @@ R.$ = (q, parent = document) => parent.querySelector(q);
 R.$$ = (q, parent = document) => [...parent.querySelectorAll(q)];
 R.esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 R.id = p => p + '-' + crypto.getRandomValues(new Uint32Array(2)).join('');
+R.isCaseRoute = path => /^\/(?:workspace|report|images)\//.test(path);
 R.today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 R.day = (n = 0) => { let d = new Date(R.today() + 'T12:00:00+04:00'); d.setDate(d.getDate() + n); return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baku', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); };
 // Locale-dependent date and price formatters are defined in i18n.js.
@@ -333,7 +334,7 @@ window.RADAZ_MESSAGES = {"az":{"RADAZ ana səhifə":"RADAZ ana səhifə","RADIOL
     }
     [...app.querySelectorAll('details')].forEach((el,index) => el.open = !!details[index]);
     if (navOpen) document.getElementById('main-nav')?.classList.add('open');
-    if (R.state.route.startsWith('/workspace/')) {
+    if (R.isCaseRoute(R.state.route)) {
       if (R.images?.length) R.drawDicom();
       else if (R.state.selectedCase?.sample) R.drawCanvasMessage(R.t('Demo müraciəti'),R.t('Real DICOM faylı daxil deyil.'));
       else R.drawCanvasMessage(R.t('DICOM faylları açılır…'),R.t('Yalnız texniki önizləmə'));
@@ -697,7 +698,7 @@ R.api = {
         R.state.user = (await R.request('/auth/me')).user;
     }
     catch {
-        R.state.mode = 'offline';
+        R.state.mode = window.RADAZ_PRODUCTION ? 'unavailable' : 'offline';
     } },
     async doctors() { return R.state.mode === 'offline' ? R.demo.doctors.filter(d => d.approved) : R.request('/doctors'); },
     async slots(date) { return R.state.mode === 'offline' ? R.demo.slots.filter(s => s.date === date).map(R.available) : R.request('/slots?date=' + date); },
@@ -903,14 +904,14 @@ R.render = () => {
     let path = R.state.route, body;
     if (path === '/dashboard')
         body = R.dashboard();
-    else if (path.startsWith('/workspace/'))
+    else if (R.isCaseRoute(path))
         body = R.workspace();
     else {
         let content = path === '/' ? R.home() : path === '/doctors' ? R.doctorsPage() : path.startsWith('/doctor/') ? R.profilePage(decodeURIComponent(path.split('/')[2])) : path === '/consult' ? R.consultPage() : path === '/login' ? R.authPage(false) : path === '/register' ? R.authPage(true) : path === '/clinics' ? R.clinicsPage() : path === '/guide' ? R.guidePage() : path === '/track' ? R.trackPage() : path === '/success' ? R.successPage() : path === '/privacy' ? R.privacyPage() : `<main class="container page">${R.empty(R.t("Səhifə tapılmadı"), R.t("Ana səhifədən davam edin."), 'search')}<a class="btn btn-primary" href="#/">${R.t("Ana səhifə")}</a></main>`;
         body = R.header() + content + R.footer();
     }
     R.$('#app').innerHTML = body;
-    document.title = path === '/dashboard' ? R.t("Həkim kabineti · RADAZ") : path.startsWith('/workspace/') ? R.t("Radioloji hesabat · RADAZ") : R.t("RADAZ — Radiologiya, bir arada.");
+    document.title = path === '/dashboard' ? R.t("Həkim kabineti · RADAZ") : R.isCaseRoute(path) ? R.t("Radioloji hesabat · RADAZ") : R.t("RADAZ — Radiologiya, bir arada.");
 };
 R.refreshPublic = async () => { const [doctors, slots] = await Promise.all([R.api.doctors(), R.api.slots(R.state.date)]); R.state.doctors = doctors; R.state.slots = slots; };
 R.loadDashboard = async () => {
@@ -942,7 +943,7 @@ R.go = path => {
 };
 R.navigate = async () => {
     const next = location.hash.slice(1) || '/';
-    if (R.state.editorDirty && R.state.route.startsWith('/workspace/') && next !== R.state.route) {
+    if (R.state.editorDirty && R.isCaseRoute(R.state.route) && next !== R.state.route) {
         if (!confirm(R.t("Hesabatda saxlanmamış dəyişiklik var. Saxlamadan çıxmaq istəyirsiniz?"))) {
             location.hash = R.state.route;
             return;
@@ -956,7 +957,7 @@ R.navigate = async () => {
             await R.loadDashboard();
             R.render();
         }
-        else if (next.startsWith('/workspace/')) {
+        else if (R.isCaseRoute(next)) {
             R.state.selectedCase = null;
             R.render();
             R.state.selectedCase = await R.api.case(decodeURIComponent(next.split('/')[2]));
@@ -971,7 +972,7 @@ R.navigate = async () => {
     }
     catch (e) {
         R.err(e);
-        if (next.startsWith('/workspace/')) {
+        if (R.isCaseRoute(next)) {
             R.state.route = '/login';
             R.render();
         }
@@ -1310,7 +1311,7 @@ document.addEventListener('keydown', e => {
         e.preventDefault();
         R.actions.pickFiles();
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && R.state.route.startsWith('/workspace/')) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && R.isCaseRoute(R.state.route)) {
         e.preventDefault();
         if (!['approved', 'sent'].includes(R.state.selectedCase?.status))
             R.actions.saveDraft().catch(R.err);
@@ -1556,7 +1557,7 @@ Object.assign(R.forms,{
  async xBooking(data){Object.assign(X.booking,data);if(X.step<3){X.step++;if(X.step===2)await X.available();R.render();window.scrollTo({top:150,behavior:'smooth'});return;}const result=await X.req('/orders',{method:'POST',body:{...X.booking,service:X.service,consent:data.consent==='on',demo_ack:data.demo_ack==='on'}});X.receipt=result;X.ops=null;R.render();window.scrollTo(0,0);},
  async xTrack(d){await X.doTrack(d.id.trim(),d.token.trim());},
  async xOrderStatus(d){await X.req('/orders/'+d.id+'/status',{method:'POST',body:{status:d.status,team:d.team||'',version:Number(d.version),clinical_checked:d.clinical_checked==='on'}});R.closeModal();await X.refresh();R.toast(T('Sifariş statusu yeniləndi'));},
- async xMessage(d,f){let token=R.state.route==='/track'?X.trackCredentials?.token:'';await X.req('/messages/'+d.target,{method:'POST',token,body:{text:d.text}});f.reset();R.toast(T('Mesaj saxlanıldı'));if(R.state.route==='/track')await X.doTrack(X.trackCredentials.id,token);else if(R.state.route.startsWith('/workspace/'))await X.refreshHub();else if(X.selectedOrder)await R.actions.xOrderDetail({dataset:{id:X.selectedOrder.id}});},
+ async xMessage(d,f){let token=R.state.route==='/track'?X.trackCredentials?.token:'';await X.req('/messages/'+d.target,{method:'POST',token,body:{text:d.text}});f.reset();R.toast(T('Mesaj saxlanıldı'));if(R.state.route==='/track')await X.doTrack(X.trackCredentials.id,token);else if(R.isCaseRoute(R.state.route))await X.refreshHub();else if(X.selectedOrder)await R.actions.xOrderDetail({dataset:{id:X.selectedOrder.id}});},
  async xSettings(d){let prices={};for(const k of ['xray','usm','ecg','video'])prices[k]=Number(d[k]);await X.req('/settings',{method:'PUT',body:{prices,commission:Number(d.commission),home_capacity:Number(d.home_capacity),report_hours:Number(d.report_hours),zones:d.zones.split(',').map(s=>s.trim()).filter(Boolean),plan:d.plan,plan_expires:d.plan_expires}});await X.loadCatalog();await X.refresh();R.toast(T('Saxlanıldı'));},
  async xTeam(d,f){await X.req('/team',{method:'POST',body:d});f.reset();await X.refresh();},
  async xRefund(d){await X.req('/refunds',{method:'POST',body:d});R.closeModal();await X.refresh();},
@@ -1622,7 +1623,7 @@ X.persistDraft=async(showToast=false)=>{
  const id=c.id,html=R.safeHTML(ed.innerHTML),state=R.$('#report-save-state');if(state)state.textContent=T('Saxlanır…');
  try{await R.api.saveReport(c,html);if(R.state.selectedCase?.id===id&&R.$('#rich-editor')){if(R.safeHTML(R.$('#rich-editor').innerHTML)===html){R.state.editorDirty=false;R.$('#report-save-state').textContent=T('Son saxlanma')+' · '+new Intl.DateTimeFormat(R.locale,{hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(new Date());}else X.scheduleAutosave();await X.refreshHub();}if(showToast)R.toast(T('Saxlanıldı'));}catch(e){if(R.$('#report-save-state'))R.$('#report-save-state').textContent=T('Qaralama saxlanmadı; yenidən sınayın.');if(showToast)throw e;}
 };
-X.scheduleAutosave=()=>{clearTimeout(X.autosaveTimer);if(R.state.route.startsWith('/workspace/'))X.autosaveTimer=setTimeout(()=>X.persistDraft(false),1800);};
+X.scheduleAutosave=()=>{clearTimeout(X.autosaveTimer);if(R.isCaseRoute(R.state.route))X.autosaveTimer=setTimeout(()=>X.persistDraft(false),1800);};
 R.actions.saveDraft=()=>X.persistDraft(true);
 const command=R.command;R.command=(...args)=>{command(...args);X.scheduleAutosave();};
 // Keep the original three-language site intact, adding explicit entrypoints and tools.
@@ -1645,7 +1646,7 @@ R.render=()=>{
  if(route.startsWith('/doctor/')){const id=route.split('/')[2];R.$('.profile-intro>div:last-child')?.insertAdjacentHTML('beforeend',btn('Həkimin QR kartı','xCard',`data-id="${E(id)}" style="margin-top:18px"`,'btn btn-outline btn-sm'));}
  if(route==='/consult'){R.$('.center-title')?.insertAdjacentHTML('beforeend',`<div class="x-consult-links"><a href="#/video">${I('play',16)} ${T('Video konsultasiya')}</a><button type="button" data-action="xWaitlist">${I('clock',16)} ${T('Gözləmə siyahısına yazıl')}</button></div>`);if(R.state.step===3){const f=R.$('#patient-form');if(f&&!f.querySelector('[name="report_language"]'))f.insertAdjacentHTML('beforeend',`<div class="form-grid">${languages('language',R.state.patient.language||R.lang,'Ünsiyyət dili')}${languages('report_language',R.state.patient.report_language||R.lang,'Hesabat dili')}</div>`);}}
  if(route==='/doctors')R.$('.page-title')?.insertAdjacentHTML('afterend',`<div class="x-consult-links">${btn('Gözləmə siyahısına yazıl','xWaitlist','','btn btn-outline btn-sm')}<a href="#/video">${T('Video konsultasiya')} ${I('arrow',16)}</a></div>`);
- if(route.startsWith('/workspace/')&&R.state.selectedCase){
+ if(R.isCaseRoute(route)&&R.state.selectedCase){
   const c=R.state.selectedCase,locked=['approved','sent'].includes(c.status);
   R.$('.report-heading')?.insertAdjacentHTML('afterend',`<div class="x-workspace-tools">${btn(X.recognition?'Diktəni dayandır':'Diktə et','xSpeech',locked?'disabled':'','x-tool')}${btn('Şablon kitabxanası','xPickTemplate',locked?'disabled':'','x-tool')}<a class="x-tool" href="#/compare">${T('Müqayisəli baxış')}</a>${btn('Kritik nəticə','xCritical','','x-tool x-critical-tool')}<span>${I('save',12)} ${T('Avtomatik qaralama')}</span></div>`);
   R.$('.report-scroll')?.insertAdjacentHTML('beforeend',`<section class="card x-case-hub" id="x-case-hub">${X.hubBody()}</section>`);
@@ -1680,4 +1681,4 @@ try{document.documentElement.dataset.theme=localStorage.getItem('radaz.theme')==
 // Fetch non-sensitive service catalogue only after the original API mode has resolved.
 setTimeout(async()=>{try{await X.loadCatalog();if(['/','/home-services','/video','/pricing'].includes(R.state.route)&&!R.$('#x-booking-form :focus'))R.render();}catch(e){R.err(e);}},150);
 })();
-</script><script src="site.js"></script></body></html>
+</script><script src="platform.js"></script><script src="site.js"></script></body></html>
