@@ -8,8 +8,10 @@ for(const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)){
 }
 new vm.Script(readFileSync(new URL('./dist/site.js',import.meta.url),'utf8'),{filename:'site.js'});
 new vm.Script(readFileSync(new URL('./dist/platform.js',import.meta.url),'utf8'),{filename:'platform.js'});
-for(const asset of ['site.js','site.css','platform.js','platform.css','assets/radaz-viewer.jpg','assets/radaz-mpr.jpg','assets/radaz-report.jpg']){
+new vm.Script(readFileSync(new URL('./dist/real.js',import.meta.url),'utf8'),{filename:'real.js'});
+new vm.Script(readFileSync(new URL('./dist/admin.js',import.meta.url),'utf8'),{filename:'admin.js'});
+for(const asset of ['site.js','site.css','platform.js','platform.css','real.js','admin.js','assets/radaz-viewer-ct.jpg','assets/radaz-report-ct.jpg']){
   if(!existsSync(new URL('./dist/'+asset,import.meta.url)))throw Error('Missing asset: '+asset);
 }
-if(!html.includes('window.RADAZ_STANDALONE=true'))throw Error('Demo mode must remain explicit.');
-console.log(JSON.stringify({inlineScripts:checked,customScripts:'valid',assets:7,mode:'static preview; server enables production'}));
+if(!html.includes('window.RADAZ_STANDALONE=false;window.RADAZ_PRODUCTION=true;'))throw Error('Production must never fall back to ephemeral demo accounts.');
+console.log(JSON.stringify({inlineScripts:checked,customScripts:'valid',assets:8,mode:'production; API required'}));

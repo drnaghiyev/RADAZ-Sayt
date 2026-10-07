@@ -1,34 +1,57 @@
 # RADAZ website
 
-Three-language RADAZ website with a portable Node.js server, persistent SQLite storage, an owner-only encrypted payment settings page, separate reporting/imaging pages, grouped rich-text templates, and a receiver for the existing RADAZ Viewer.
+Azerbaijani, Russian and English radiology portal with persistent accounts, private DICOM uploads, separate report and image pages, grouped rich-text templates, and owner-only settings.
 
-## Run on your own hosting
+## Deployed architecture
 
-Node.js 24 or later is required. This is a server application; GitHub Pages cannot run its authenticated APIs.
+The Sites publication now runs `cloud/worker.mjs` with **D1** for accounts, profiles, reports and settings and **R2** for files. It is not a static browser demo. Public registration creates patient, doctor or clinic accounts; doctors require owner approval. Patients see their own requests and approved reports. Only assigned approved radiologists and the owner can edit reports.
+
+The site owner uses **Administrator girişi** on the sign-in page. The Worker checks the trusted Sites authenticated user ID against `OWNER_PLATFORM_ID`, then issues an HttpOnly session. `TRUST_SITES_IDENTITY=true` is valid only behind the Sites dispatcher, which controls identity headers. Do not enable it on an internet-facing server that accepts caller-supplied identity headers. No default owner password is committed.
+
+Required production environment variables (managed in Sites, never in Git):
+
+- `PUBLIC_ORIGIN`: exact HTTPS site origin.
+- `SETTINGS_ENCRYPTION_KEY`: random 32-byte base64 key; keep a private backup and preserve it across deployments.
+- `OWNER_PLATFORM_ID`: the owner's Site-specific authenticated identity, not the account UUID.
+- `OWNER_EMAIL`: reserves the owner email against public registration.
+- `TRUST_SITES_IDENTITY=true`: only for Sites dispatch.
+
+## Local development and checks
+
+Node.js 24+:
 
 ```sh
 npm ci
-npm run setup
-npm start
+npm run build
+npx wrangler d1 migrations apply DB --local
+npm run dev:cloud
 ```
 
-`setup` creates the first and only owner administrator through a local terminal. It asks for the owner email, site origin, and a hidden password of at least 12 characters. It creates a private `.env` file with a random encryption key. There are no default administrator credentials and no public administrator registration or demo login on the server.
+Set local variables in ignored `.dev.vars`. Local D1/R2 data remains in ignored `.wrangler/`. Production data is separate. `npm run build` creates `dist/client` and `dist/server/index.js`; generated Drizzle migrations are packaged with the Worker. Never edit an applied migration.
 
-For local use, choose `http://127.0.0.1:5188`. For hosting, use the final HTTPS origin in `PUBLIC_ORIGIN`, set `NODE_ENV=production`, and place an HTTPS reverse proxy in front of the server. `HOST=127.0.0.1` is the default. Set `TRUST_PROXY=1` only behind one trusted reverse proxy. Container deployments can use the included Dockerfile, a private environment file, and a persistent `/app/data` volume.
+```sh
+npm run verify
+npm run build
+npm test
+```
 
-Back up **both** the data directory and `SETTINGS_ENCRYPTION_KEY` privately. Losing the key makes stored payment settings unreadable. The key, database, medical archives and `.env` must never be committed. Public assets alone are in `dist/`; private data is served only through authorized API routes. Use encrypted disks/backups and restrict server access before handling real medical records.
+Tests use the Workers runtime with D1/R2 and separately check the retained Node backend. They cover account persistence, authorization, CSRF, encrypted/write-only settings, streamed uploads, template ownership, report locking/conflicts, single-use Viewer grants and payment confirmation signatures/amounts/idempotency.
 
-## Owner payment settings
+The earlier Express/SQLite backend remains under `server/` with `npm run setup` / `npm start` for the prior portable installation. It is not the backend of the current Sites publication and does not yet include all cloud portal features. For a future shared host, port the cloud API or retain Workers behind a host/router and mount the RADAZ Viewer separately. GitHub Pages cannot run these APIs.
 
-Sign in as the owner and open **Ödəniş ayarları** in the sidebar (`#/admin/payments`). Bank name, account holder, IBAN, SWIFT, tax ID, merchant ID and provider keys are encrypted together using AES-256-GCM. Secret keys are write-only: GET responses report whether a key is present, never its value. Blank fields preserve existing keys; explicit checkboxes remove them. Every settings API request checks the owner identity server-side. Doctor and clinic accounts cannot access it, including by calling the API directly.
+## Owner settings and payments
 
-Saving settings does **not** activate card charging. The provider's signed payment callback, reconciliation and payment adapter must be implemented once the provider is chosen. Current consultation requests are stored as `pending / not_charged`, with no simulated charge or automatic payment confirmation. No payment credentials are in this repository.
+**Ödəniş ayarları** (`#/admin/payments`) stores bank details and provider keys with AES-256-GCM. Secret keys are write-only, blank fields preserve existing values, and explicit checkboxes delete a stored key. Every request checks the owner role on the server.
+
+Payments default to **demo**: no card details or charges. The provider has not been selected. A server-side Epoint adapter is included as an optional integration; Epoint public key in Merchant ID, private key in Secret key, AZN and Live enable hosted checkout. Bank details alone do not activate a payment gateway. Other providers require their own adapter. Real merchant checkout still needs verification with the selected provider before accepting real payments.
+
+The Epoint adapter signs requests, verifies callback signatures and stored order/amount/transaction, and supports status reconciliation from the patient cabinet. A browser success redirect never marks an order paid. An owner-private Sites audience may block external callbacks; authenticated status reconciliation remains available. Keep the current audience unless the owner changes it deliberately.
+
+**Əlaqə ayarları** (`#/admin/contact`) controls the displayed call center (initially `*006`) and optional phone number. No additional phone number has been invented. The site displays a two-hour response message and stores a response deadline on submitted demo cases or confirmed live payments.
 
 ## Reports and templates
 
-The case list opens `#/report/<case-id>`. **Görüntülər** opens `#/images/<case-id>` in another tab, while the report remains available. Reports have rich text, draft saving, server-side version conflict checks, approval locking and stored versions. Only the assigned approved doctor can edit a report.
-
-Templates are private to each doctor. **Şablon kitabxanası** supports headings, bold/italic/underline, lists, tables, undo/redo, and create/edit/delete. Each template belongs to exactly one group: `CT` (KT), `MR` (MRT), `CR` (Rentgen), or `US` (USM). Grouping also appears when inserting a template into a report. HTML is sanitized on the server.
+Cases open `#/report/<case-id>`. **Görüntülər** opens `#/images/<case-id>` in a separate tab. Long reports scroll to the bottom. Drafts persist on the server, concurrent edits produce a conflict, approved reports are locked, and report versions are retained. Templates use rich text and belong to KT/CT, MRT/MR, Rentgen/CR or USM/US groups.
 
 ## Connect the existing RADAZ Viewer
 
@@ -54,19 +77,16 @@ Once the installed RADAZ build includes the receiver, register the current-user 
 
 The script registers `radaz://open`, tied to the exact website origin, localhost Viewer origin, and existing installed `launcher.ps1`. The handler validates the URL and ticket before starting the installed RADAZ program, then opens its local Viewer. It does not run commands supplied by a URL. Enable the desktop button in the site's connection settings. The browser may show its normal external-application confirmation. The Windows launcher must be installed on each workstation that needs this feature.
 
-## Deployment and preview
+## Screenshots and scope
 
-The `.openai/hosting.json` configuration keeps the existing Sites link as a **static UI preview**. It cannot store payment settings or real records and clearly refuses credential storage. The Node server serves the same interface with `RADAZ_PRODUCTION=true` and standalone fallback disabled. Deploy the Node server for real accounts and persistence; publishing the GitHub repository or static preview alone does not deploy the backend.
+The gallery contains actual screenshots of the RADAZ application. The CT image is the public deidentified `693_J2KR.dcm` fixture from [pydicom-data](https://github.com/pydicom/pydicom-data), originally CQ500-CT-310. No private patient archive is included in the repository. The sample file itself is not deployed; only application screenshots are used.
 
-The retained presentation includes additional service concepts. Email/WhatsApp delivery, card charging, MFA enrollment, PACS provisioning and advanced review/team operations are not enabled by this server; unsupported API actions return an explicit error instead of simulating success. Configure clinical service availability and privacy/retention policy for your organization before going public.
+Email/WhatsApp delivery, MFA enrollment, PACS provisioning, mobile home services, advanced peer-review/team operations and automatic clinical interpretation are not configured in this portal. Demo controls for unavailable services are removed from the normal navigation. There are no seeded patient accounts or medical records in production migrations.
 
-## Verification
+Payment protocol reference: [Epoint developer documentation](https://developer.epoint.az/az/callbacks). Account and file permissions are enforced by the server; configure organizational access, retention and backups for your deployment.
 
-```sh
-npm run verify
-npm test
-```
+## Admin və həkim qazancı
 
-Tests cover owner-only access, CSRF rejection, encrypted/write-only keys and restart persistence, template ownership and sanitization, report locking/conflicts, single-use Viewer grants, expiration/origin restrictions, session revocation and private-file isolation. GitHub Actions runs the same checks on Node 24.
+`#/admin/overview`: sahibə məxsus admin paneli, qeydiyyat və rapor sayları, həkim təsdiqi. `#/admin/earnings-settings`: ümumi və həkimə özəl faiz (0–100%) və ya sabit AZN/rapor. `#/admin/earnings`: tarix aralığı, həkim filtri, ay seçimi, xülasə və CSV; həkim yalnız `#/earnings` vasitəsilə öz qazancını görür.
 
-Security implementation references: [Express security guidance](https://expressjs.com/en/advanced/best-practice-security/), [Node SQLite](https://nodejs.org/api/sqlite.html), and [sanitize-html](https://www.npmjs.com/package/sanitize-html).
+Hesablama yalnız serverdə təsdiqlənmiş AZN ödənişi və təsdiqlənmiş rapor üçün aparılır. Qazanc tarixi raporun təsdiqidir; gün sərhədləri Asia/Baku, hər iki tarix daxil. Qəpik və faiz üçün tam ədədlər istifadə edilir, nəticə ən yaxın qəpiyə yuvarlaqlaşdırılır. Qayda, ödəniş və qazanc hər rapor üçün saxlanılır, sonrakı qayda dəyişiklikləri tarixçəni dəyişmir. Qaydasız təsdiqlənən raporlar hesablanmamış kimi görünür; admin bunları ayrıca cari qayda ilə hesablayır. Demo və geri qaytarılmış ödənişlər cəmə daxil edilmir. Bu panel qazanc hesablayır, bank köçürməsi etmir.

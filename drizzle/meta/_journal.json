@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1791364232951,
+      "tag": "0000_yummy_major_mapleleaf",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791366933532,
+      "tag": "0001_talented_jasper_sitwell",
+      "breakpoints": true
+    }
+  ]
+}

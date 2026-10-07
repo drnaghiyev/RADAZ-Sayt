@@ -11,3 +11,10 @@ coverage/
 *.sqlite*
 *.db*
 test-results/
+
+.wrangler/
+dist/server/
+dist/client/
+dist/.openai/
+.dev.vars
+.qa/

@@ -1,49 +1,32 @@
-# RADAZ saytını işə salmaq
+# RADAZ saytının istifadəsi
 
-Bu repository saytın interfeysini, Node.js serverini, məlumat bazasını yaradan kodu və RADAZ bağlantı modulunu saxlayır. Node.js 24 və ya daha yeni versiya tələb olunur.
+Sayt hesabları, profilləri, müraciətləri və raporları serverdə saxlayır. Səhifə yeniləndikdə məlumatlar silinmir. Köhnə brauzer demosunda yaradılan hesablar daimi bazaya yazılmadığı üçün həmin hesablarla ilk dəfə yenidən qeydiyyatdan keçmək lazımdır.
 
-```sh
-npm ci
-npm run setup
-npm start
-```
+## Giriş
 
-`setup` zamanı öz administrator emailinizi, saytın ünvanını və ən az 12 simvolluq şifrənizi daxil edin. Şifrə terminalda görünmür. Hazır admin şifrəsi yoxdur. Açıq qeydiyyatla administrator yaratmaq mümkün deyil.
+- Pasiyent, həkim və klinika hesabı üçün **Qeydiyyatdan keç** bölməsini açın. Şifrə ən az 12 simvol olmalıdır.
+- Sonrakı girişlərdə eyni email və şifrədən istifadə edin.
+- Sayt sahibi giriş səhifəsində **Administrator girişi** düyməsini seçir. Bu giriş yalnız əvvəlcədən bağlanmış ChatGPT hesabına icazə verir.
+- Həkim profilini və qəbul qrafikini tamamlayır. Həkim qeydiyyatı administrator tərəfindən təsdiqlənir.
 
-Lokal yoxlama üçün `http://127.0.0.1:5188`, real hostinq üçün öz HTTPS domeninizi seçin. Port məşğuldursa `.env` daxilində `PORT` və `PUBLIC_ORIGIN` dəyərlərini birlikdə dəyişin. Real hostinqdə HTTPS reverse proxy və `NODE_ENV=production` istifadə edin.
+## Müraciət və rapor
 
-## Ödəniş ayarları
+Pasiyent şəxsi kabinetindən müayinə göndərir. DICOM faylları və ya ZIP arxivi seçilir, sonra radioloq və qəbul intervalı təyin olunur. Müraciət kabinetdə qalır. Saytda **“Rapor müraciətinizə 2 saat ərzində cavab veriləcək”** mətni göstərilir.
 
-Administrator kabinetində **Ödəniş ayarları** bölməsini açın. Bank məlumatları və provayder açarları serverdə şifrələnərək saxlanır. Digər hesabların bu bölməyə API vasitəsilə də girişi yoxdur. Saxlanmış məxfi açar yenidən göstərilmir; boş sahə köhnə açarı qoruyur.
+Həkim üçün rapor və görüntülər ayrı səhifələrdə açılır. Uzun rapor aşağıya qədər sürüşdürülür. Qaralamalar serverdə saxlanır; təsdiqlənmiş rapor pasiyent kabinetində görünür. Rich-text şablonlar KT, MRT, Rentgen və USM qruplarında yaradılır.
 
-Bu mərhələdə kartdan pul tutulmur. Ödəniş provayderi seçildikdən sonra onun ödəniş və imzalanmış bildiriş inteqrasiyası qoşulmalıdır. Müraciətlər ödəniş edilməmiş kimi saxlanır.
+## Administrator ayarları
 
-## Rapor və şablonlar
+- **Ödəniş ayarları:** bank və provayder məlumatları şifrəli saxlanır. Məxfi açarlar yenidən göstərilmir. Boş sahə əvvəlki açarı qoruyur.
+- **RADAZ bağlantısı:** proqramın real URL ünvanı yazılır. Eyni hostinqdə `/viewer/` marşrutu istifadə oluna bilər. RADAZ proqramına repository-dəki qəbuledici modul qoşulub yenidən yığılmalıdır.
+- **Əlaqə ayarları:** call center hazırda `*006`-dır. Əlavə telefon nömrəsini sonradan burada əlavə edin.
 
-Həkim müraciəti açanda rapor səhifəsi görünür. **Görüntülər** ayrıca vərəqdə açılır. Şablon kitabxanasında rich-text redaktoru var; hər şablon KT, MRT, Rentgen və ya USM qrupuna aiddir. Şablonlar həkimin öz hesabında qalır. Rapor qaralamaları serverdə saxlanır, təsdiqlənmiş rapor kilidlənir.
+Ödəniş provayderi hələ seçilmədiyi üçün ödəniş demo rejimindədir və pul tutulmur. Epoint üçün qoşulma kodu hazırlanıb, başqa provayder seçilərsə onun inteqrasiyası lazımdır. Təkcə bank rekvizitini yazmaq kart ödənişini işə salmır; seçilən provayderin merchant hesabı, açarları və real ödəniş yoxlaması tələb olunur.
 
-## Mövcud RADAZ proqramına qoşulma
+## Yerləşdirmə
 
-```sh
-node integrations/radaz/install-receiver.mjs "RADAZ-proqraminin-source-qovlugu"
-```
+Hazırkı Sites versiyası D1 məlumat bazası və R2 fayl anbarı ilə işləyir. GitHub repository-si kodu saxlayır; GitHub Pages server funksiyalarını işlətmir. Quraşdırma, mühit dəyişənləri və RADAZ Windows keçidinin addımları README.md faylındadır. Saytın mövcud giriş auditoriyası bu dəyişikliklə genişləndirilmir.
 
-RADAZ qurulmazdan əvvəl `NEXT_PUBLIC_RADAZ_SITE_ORIGINS` dəyişəninə saytın dəqiq ünvanını yazın. Sonra RADAZ-ı yenidən build edib yerləşdirin/quraşdırın. Köhnə quraşdırılmış proqram avtomatik bu modulu almır.
+## Admin paneli və qazanc
 
-Sayt administratoru **RADAZ bağlantısı** bölməsində görüntüləyicinin ünvanını yazır. Gələcək eyni hostinqdə `/viewer/` istifadə edilə bilər; həmin yol və proqramın resursları hostinqdə RADAZ-a yönləndirilməlidir. Keçid iki dəqiqəlik və birdəfəlikdir.
-
-Windows proqramını başlatmaq üçün, qəbuledici modulu olan RADAZ quraşdırıldıqdan sonra:
-
-```powershell
-.\integrations\windows\install-radaz-link.ps1 -SiteOrigin 'https://sizin-domeniniz.az'
-```
-
-Bu modul hər iş kompüterində qurulur. Saytın RADAZ ayarlarında lokal ünvanı `http://localhost:5173/` seçib proqramı başlatma düyməsini aktiv edin. Brauzer xarici proqramı açmazdan əvvəl normal təsdiq pəncərəsi göstərə bilər.
-
-## Hostinq və ehtiyat nüsxə
-
-GitHub-a kodun göndərilməsi serveri internetdə işə salmır. Mövcud `chatgpt.site` ünvanı interfeys önizləməsidir və bank məlumatlarını saxlamır. Həqiqi hesablar və davamlı məlumatlar üçün bu Node.js serveri öz hostinqinizdə işləməlidir; GitHub Pages uyğun deyil.
-
-`.env`, `SETTINGS_ENCRYPTION_KEY` və `data` qovluğunu məxfi saxlayın, GitHub-a göndərməyin. Məlumat bazası və şifrələmə açarının birlikdə ehtiyat nüsxəsini saxlayın. Daha ətraflı texniki quraşdırma [README](README.md) faylındadır.
-
-Yoxlama: `npm run verify` və `npm test`. Qəbul yoxlamasında şablonun formatlı saxlanması, raporun yenilənmədən sonra qalması və 5 sintetik KT görüntüsünün RADAZ-a ötürülməsi brauzerdə yoxlanılıb. Windows protokolunun real quraşdırılmış EXE ilə işə salınması bu sınağa daxil deyil.
+Giriş səhifəsində “Administrator girişi” ilə daxil olun. Qazanc ayarlarında əvvəl ümumi faiz və ya sabit AZN məbləği yazın. İstəsəniz hər həkimə ayrıca qayda təyin edin. Həkim hesabatında başlanğıc və son tarix, həkim, “Bu ay” / “Keçən ay” seçimi və CSV yükləmə var. Real ödənişli təsdiqlənmiş raporlar hesablanır; ödəniş sınaqları qazanca daxil deyil. Əvvəl hesablanmış qazanc qayda dəyişəndə saxlanılır.

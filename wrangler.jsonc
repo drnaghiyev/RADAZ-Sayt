@@ -1,0 +1,10 @@
+{
+ "name":"radaz-site",
+ "main":"dist/server/index.js",
+ "compatibility_date":"2026-05-15",
+ "compatibility_flags":["nodejs_compat"],
+ "assets":{"directory":"dist/client","binding":"ASSETS","run_worker_first":true,"not_found_handling":"single-page-application"},
+ "d1_databases":[{"binding":"DB","database_name":"radaz-site","database_id":"00000000-0000-4000-8000-000000000000","migrations_dir":"drizzle"}],
+ "r2_buckets":[{"binding":"BUCKET","bucket_name":"radaz-site-archives"}]
+}
+
